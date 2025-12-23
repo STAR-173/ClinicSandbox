@@ -1,0 +1,50 @@
+[project]
+name = "clinisandbox"
+version = "0.1.0"
+description = "Headless Diagnostic ML Registry & Execution Engine"
+authors = [
+    {name = "CliniSandbox Team", email = "engineering@clinisandbox.internal"}
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+    "sqlalchemy>=2.0.25",
+    "asyncpg>=0.29.0",         # Async Postgres driver
+    "alembic>=1.13.0",         # DB Migrations
+    "redis>=5.0.1",
+    "structlog>=24.1.0",       # Structured Logging
+    "python-json-logger>=2.0.7",
+    "prometheus-client>=0.19.0", # Metrics
+    "tenacity>=8.2.3",         # Retries
+    "fhir.resources>=7.1.0",   # FHIR Parsing (for later)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.26.0",           # Async HTTP Client for tests
+    "testcontainers>=3.7.1",   # Real DBs for integration tests
+    "factory-boy>=3.3.0",      # Data fixtures
+    "black>=24.1.0",           # Formatter
+    "isort>=5.13.0",           # Import sorter
+    "pre-commit>=3.6.0"
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=src"
+testpaths = ["tests"]
+python_files = "test_*.py"
+asyncio_mode = "auto"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 88
