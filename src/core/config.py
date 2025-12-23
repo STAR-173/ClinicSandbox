@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # App Config
     PROJECT_NAME: str = "CliniSandbox"
+    PROJECT_VERSION: str = "0.1.0"
     ENVIRONMENT: Literal["development", "production", "testing"] = "development"
     DEBUG: bool = False
     API_V1_STR: str = "/v1"
