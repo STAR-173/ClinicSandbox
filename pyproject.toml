@@ -25,6 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.23.0",
     "httpx>=0.26.0",           # Async HTTP Client for tests
     "testcontainers>=3.7.1",   # Real DBs for integration tests
@@ -40,6 +41,11 @@ addopts = "-ra -q --cov=src"
 testpaths = ["tests"]
 python_files = "test_*.py"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::sqlalchemy.exc.SAWarning"
+]
 
 [tool.black]
 line-length = 88
