@@ -11,8 +11,38 @@ async def test_end_to_end_job_processing(client: AsyncClient, db_session):
     payload = {
         "client_id": "integration_tester",
         "target_diagnosis": "sepsis",
-        "fhir_bundle": {}
+        "fhir_bundle": {
+            "resourceType": "Bundle",
+            "type": "collection",
+            "entry": [
+                {
+                    "resource": {
+                        "resourceType": "Observation",
+                        "status": "final",
+                        "code": { "coding": [{ "system": "http://loinc.org", "code": "8310-5" }] },
+                        "valueQuantity": { "value": 37.5, "unit": "C" }
+                    }
+                },
+                {
+                    "resource": {
+                        "resourceType": "Observation",
+                        "status": "final",
+                        "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4" }] },
+                        "valueQuantity": { "value": 90, "unit": "/min" }
+                    }
+                },
+                {
+                    "resource": {
+                        "resourceType": "Observation",
+                        "status": "final",
+                        "code": { "coding": [{ "system": "http://loinc.org", "code": "6690-2" }] },
+                        "valueQuantity": { "value": 11.0, "unit": "10*3/uL" }
+                    }
+                }
+            ]
+        }
     }
+    
     response = await client.post("/v1/diagnose", json=payload)
     job_id = response.json()["job_id"]
     

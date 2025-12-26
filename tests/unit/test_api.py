@@ -17,7 +17,36 @@ async def test_create_diagnosis_job(client: AsyncClient, db_session):
         "client_id": "pytest_bot",
         "target_diagnosis": "sepsis",
         "webhook_url": "http://pytest.local/hook",
-        "fhir_bundle": {"resourceType": "Bundle", "entry": []}
+        "fhir_bundle": {
+            "resourceType": "Bundle",
+            "type": "collection",
+            "entry": [
+                {
+                    "resource": {
+                        "resourceType": "Observation",
+                        "status": "final",
+                        "code": { "coding": [{ "system": "http://loinc.org", "code": "8310-5" }] },
+                        "valueQuantity": { "value": 37.5, "unit": "C" }
+                    }
+                },
+                {
+                    "resource": {
+                        "resourceType": "Observation",
+                        "status": "final",
+                        "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4" }] },
+                        "valueQuantity": { "value": 90, "unit": "/min" }
+                    }
+                },
+                {
+                    "resource": {
+                        "resourceType": "Observation",
+                        "status": "final",
+                        "code": { "coding": [{ "system": "http://loinc.org", "code": "6690-2" }] },
+                        "valueQuantity": { "value": 11.0, "unit": "10*3/uL" }
+                    }
+                }
+            ]
+        }
     }
     
     # 1. Send Request
