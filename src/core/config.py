@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["development", "production", "testing"] = "development"
     DEBUG: bool = False
     API_V1_STR: str = "/v1"
+
+    # Security
+    WEBHOOK_SECRET: str = "mvp-secret-key-change-in-prod"
     
     # Database (Postgres)
     POSTGRES_SERVER: str = "localhost"

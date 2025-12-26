@@ -7,7 +7,8 @@ from src.core.logging import setup_logging
 from src.db.session import AsyncSessionLocal
 from src.db.models import Job
 from src.services.queue import redis_client, QUEUE_NAME
-from src.core.vm_factory import get_vm_backend # <--- New Import
+from src.core.vm_factory import get_vm_backend
+from src.services.webhook import WebhookService
 
 setup_logging()
 logger = structlog.get_logger()
@@ -45,6 +46,18 @@ async def process_job(job_id: str):
             # --- VIRTUALIZATION END ---
 
             await db.commit()
+
+            # --- WEBHOOK DISPATCH START ---
+            if job.webhook_url:
+                try:
+                    await WebhookService.send_webhook(
+                        url=job.webhook_url, 
+                        job_id=str(job.id), 
+                        result=job.result_payload
+                    )
+                except Exception as wh_err:
+                    logger.error("webhook_failed_all_retries", job_id=job_id, error=str(wh_err))
+            
             logger.info("processing_job_done", status=job.status)
 
         except Exception as e:
