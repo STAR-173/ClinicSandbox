@@ -5,32 +5,67 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.db.session import get_db
-from src.db.models import Job, DiagnosticModel
+from src.db.models import Job
 from src.schemas.job import JobCreateRequest, JobResponse, JobStatusResponse
-from src.services.queue import enqueue_job  # We will create this helper next
+from src.services.queue import enqueue_job
+from src.services.decision_engine import DecisionEngine
+from src.schemas.manifest import ModelManifest, LOINCRequirement
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+# --- MOCK REGISTRY ---
+SEPSIS_MANIFEST = ModelManifest(
+    target_diagnosis="sepsis",
+    minimum_accuracy=0.95,
+    required_observations=[
+        LOINCRequirement(code="8310-5", display="Body Temperature", mandatory=True),
+        LOINCRequirement(code="8867-4", display="Heart Rate", mandatory=True),
+        LOINCRequirement(code="6690-2", display="Leukocytes (WBC)", mandatory=True)
+    ]
+)
+# ------------------------------------------------
 
 @router.post("/diagnose", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
 async def request_diagnosis(
     payload: JobCreateRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    1. Validate Client (Mocked for now).
-    2. Check if Model exists.
-    3. Persist Job in DB (QUEUED).
-    4. Push to Redis.
-    """
-    
-    # 1. Validate Target Model (Simple check for MVP)
-    # In a real app, we'd query the DB to ensure 'payload.target_diagnosis' maps to a valid model
-    # For Milestone 1, we assume if it's "sepsis", it's valid.
-    if payload.target_diagnosis not in ["sepsis", "pneumonia", "test_model"]:
-        raise HTTPException(status_code=400, detail="Unknown target diagnosis model")
+    logger.info("diagnosis_request_received", client_id=payload.client_id, target=payload.target_diagnosis)
 
-    # 2. Create Job Record
+    # 1. Select Manifest (Mock Lookup)
+    if payload.target_diagnosis != "sepsis":
+        # For M3, only Sepsis has strict rules. Others might be pass-through.
+        # But let's reject unknown models.
+        raise HTTPException(status_code=400, detail="Unknown target diagnosis model. Only 'sepsis' is supported with strict validation.")
+    
+    target_manifest = SEPSIS_MANIFEST
+
+    # 2. Run Decision Engine (Gap Analysis)
+    try:
+        is_ready, missing_reqs = DecisionEngine.analyze_gap(payload.fhir_bundle, target_manifest)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid FHIR Bundle format")
+    except Exception as e:
+        logger.error("decision_engine_error", error=str(e))
+        raise HTTPException(status_code=500, detail="Internal Decision Engine Error")
+
+    # 3. Handle Negotiation (The "Red Light")
+    if not is_ready:
+        logger.info("negotiation_required", missing_count=len(missing_reqs))
+        
+        # We return 400 Bad Request because the client FAILED to provide required data.
+        # In a chat flow, the bot reads this error and asks the user.
+        return_msg = {
+            "status": "NEGOTIATION_REQUIRED",
+            "message": "Insufficient clinical data for this model.",
+            "missing_data": [req.model_dump() for req in missing_reqs]
+        }
+        # Note: We are raising HTTPException to stop execution, but we pass the structured data in detail.
+        # Ideally, we might want a custom 422 or 200-OK-with-Action, but 400 is semantically correct here.
+        raise HTTPException(status_code=409, detail=return_msg) # 409 Conflict is often used for "State of resource incompatible"
+
+    # 4. Create Job (The "Green Light")
     new_job = Job(
         client_id=payload.client_id,
         target_model_key=payload.target_diagnosis,
@@ -43,18 +78,8 @@ async def request_diagnosis(
     await db.commit()
     await db.refresh(new_job)
 
-    logger.info("job_persisted", job_id=str(new_job.id), client_id=payload.client_id)
-
-    # 3. Enqueue to Redis (Async)
-    try:
-        await enqueue_job(str(new_job.id), payload.model_dump())
-    except Exception as e:
-        logger.error("redis_enqueue_failed", error=str(e))
-        # If Redis fails, we should probably rollback or mark job as FAILED
-        # For now, we return 500
-        new_job.status = "FAILED"
-        await db.commit()
-        raise HTTPException(status_code=500, detail="Failed to queue job")
+    # 5. Enqueue
+    await enqueue_job(str(new_job.id), payload.model_dump())
 
     return JobResponse(
         job_id=new_job.id,
