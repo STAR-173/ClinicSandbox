@@ -11,6 +11,15 @@ class Settings(BaseSettings):
 
     # Security
     WEBHOOK_SECRET: str = "mvp-secret-key-change-in-prod"
+
+    # Virtualization (Firecracker)
+    # Toggle this to True ONLY on a KVM-enabled Linux Host
+    USE_REAL_VM: bool = False 
+    
+    # Paths to the artifacts on the Host Machine
+    FC_BINARY_PATH: str = "/usr/bin/firecracker"
+    FC_KERNEL_PATH: str = "/var/lib/clinisandbox/vmlinux.bin"
+    FC_ROOTFS_PATH: str = "/var/lib/clinisandbox/rootfs.ext4"
     
     # Database (Postgres)
     POSTGRES_SERVER: str = "localhost"
