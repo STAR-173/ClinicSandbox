@@ -60,6 +60,7 @@ services:
       - ENVIRONMENT=development
       - POSTGRES_SERVER=db
       - REDIS_HOST=redis
+      # - USE_REAL_VM=true # Toggle this to True ONLY on a KVM-enabled Linux Host
     volumes:
       - .:/app
 
