@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.db.session import get_db
-from src.db.models import Job
+from src.db.models import Job, DiagnosticModel
 from src.schemas.job import JobCreateRequest, JobResponse, JobStatusResponse
 from src.services.queue import enqueue_job
 from src.services.decision_engine import DecisionEngine
@@ -15,18 +15,6 @@ from src.services.audit import record_audit_event
 router = APIRouter()
 logger = structlog.get_logger()
 
-# --- MOCK REGISTRY ---
-SEPSIS_MANIFEST = ModelManifest(
-    target_diagnosis="sepsis",
-    minimum_accuracy=0.95,
-    required_observations=[
-        LOINCRequirement(code="8310-5", display="Body Temperature", mandatory=True),
-        LOINCRequirement(code="8867-4", display="Heart Rate", mandatory=True),
-        LOINCRequirement(code="6690-2", display="Leukocytes (WBC)", mandatory=True)
-    ]
-)
-# ------------------------------------------------
-
 @router.post("/diagnose", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
 async def request_diagnosis(
     payload: JobCreateRequest,
@@ -34,14 +22,37 @@ async def request_diagnosis(
 ):
     logger.info("diagnosis_request_received", client_id=payload.client_id, target=payload.target_diagnosis)
 
-    # 1. Select Manifest (Mock Lookup)
-    if payload.target_diagnosis != "sepsis":
-        # For M3, only Sepsis has strict rules. Others might be pass-through.
-        # But let's reject unknown models.
-        raise HTTPException(status_code=400, detail="Unknown target diagnosis model. Only 'sepsis' is supported with strict validation.")
-    
-    target_manifest = SEPSIS_MANIFEST
+    # 1. Select Manifest (Dynamic DB Lookup)
+    # We look for the model with the highest accuracy for this target
+    stmt = (
+        select(DiagnosticModel)
+        .where(DiagnosticModel.key == payload.target_diagnosis)
+        .order_by(DiagnosticModel.accuracy.desc())
+    )
+    result = await db.execute(stmt)
+    model_record = result.scalars().first()
 
+    if not model_record:
+        logger.warning("unknown_model_requested", target=payload.target_diagnosis)
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unknown target diagnosis '{payload.target_diagnosis}'. No models registered."
+        )
+
+    # Convert DB JSONB to Pydantic Manifest
+    # We construct the Manifest object dynamically
+    try:
+        reqs = [LOINCRequirement(**req) for req in model_record.required_fhir_resources.get("required_observations", [])]
+        
+        target_manifest = ModelManifest(
+            target_diagnosis=model_record.key,
+            minimum_accuracy=model_record.accuracy,
+            required_observations=reqs
+        )
+    except Exception as e:
+        logger.error("corrupt_model_manifest", model_id=str(model_record.id), error=str(e))
+        raise HTTPException(status_code=500, detail="Internal Registry Error: Model Manifest is corrupt.")
+        
     # 2. Run Decision Engine (Gap Analysis)
     try:
         is_ready, missing_reqs = DecisionEngine.analyze_gap(payload.fhir_bundle, target_manifest)
@@ -71,7 +82,7 @@ async def request_diagnosis(
         except Exception as audit_err:
             # Log the actual DB error
             logger.error("audit_commit_failed", error=str(audit_err))
-            
+
             # We don't stop the flow, but we might want to rollback the transaction 
             # to clean up the failed insert attempt before raising the HTTP 409
             await db.rollback()
