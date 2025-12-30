@@ -8,7 +8,8 @@ import structlog
 
 from src.core.config import settings
 from src.core.logging import setup_logging
-from src.api.router import api_router # We will create this next
+from src.api.router import api_router
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # 1. Initialize Logging
 setup_logging()
@@ -36,6 +37,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        return response
+    except Exception as e:
+        logger.error("middleware_crash", error=str(e), path=request.url.path)
+        raise e
 
 # 5. Middleware: Observability & Tracing
 @app.middleware("http")

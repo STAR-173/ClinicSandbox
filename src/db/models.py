@@ -45,3 +45,18 @@ class Job(Base):
     # Timestamps for Observability
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+class AuditLog(Base):
+    """
+    Immutable record of system decisions.
+    """
+    __tablename__ = "audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Nullable because some events might not be tied to a job (e.g., system startup, login)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=True)
+    
+    event_type: Mapped[str] = mapped_column(String, index=True) # e.g. "DECISION_NEGOTIATION_REQUIRED"
+    details: Mapped[dict] = mapped_column(JSONB) # The context (missing codes, client id)
+    
+    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

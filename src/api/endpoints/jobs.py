@@ -10,6 +10,7 @@ from src.schemas.job import JobCreateRequest, JobResponse, JobStatusResponse
 from src.services.queue import enqueue_job
 from src.services.decision_engine import DecisionEngine
 from src.schemas.manifest import ModelManifest, LOINCRequirement
+from src.services.audit import record_audit_event
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -53,6 +54,27 @@ async def request_diagnosis(
     # 3. Handle Negotiation (The "Red Light")
     if not is_ready:
         logger.info("negotiation_required", missing_count=len(missing_reqs))
+
+        # Record WHY we are rejecting this request
+        try:
+            await record_audit_event(
+                db,
+                event_type="DECISION_NEGOTIATION_REQUIRED",
+                details={
+                    "client_id": payload.client_id,
+                    "target": payload.target_diagnosis,
+                    "missing_codes": [req.code for req in missing_reqs],
+                    "missing_display": [req.display for req in missing_reqs]
+                }
+            )
+            await db.commit()
+        except Exception as audit_err:
+            # Log the actual DB error
+            logger.error("audit_commit_failed", error=str(audit_err))
+            
+            # We don't stop the flow, but we might want to rollback the transaction 
+            # to clean up the failed insert attempt before raising the HTTP 409
+            await db.rollback()
         
         # We return 400 Bad Request because the client FAILED to provide required data.
         # In a chat flow, the bot reads this error and asks the user.
