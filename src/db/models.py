@@ -2,6 +2,7 @@ import uuid
 import datetime
 from sqlalchemy import String, DateTime, ForeignKey, Float
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from src.db.types import EncryptedJSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -40,7 +41,7 @@ class Job(Base):
     target_model_key: Mapped[str] = mapped_column(String) # e.g. "sepsis"
     
     # Input/Output
-    fhir_bundle_input: Mapped[dict] = mapped_column(JSONB) # The patient data
+    fhir_bundle_input: Mapped[dict] = mapped_column(EncryptedJSON) 
     result_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True) # The diagnosis
     
     webhook_url: Mapped[str | None] = mapped_column(String, nullable=True)
